@@ -1,0 +1,79 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: doc-debt-tracker
+
+  # ---- Database ----
+  # Default: H2 file-based DB, zero setup, great for the hackathon demo.
+  # To use Postgres instead, set DB_URL / DB_USERNAME / DB_PASSWORD and switch
+  # the driver-class-name / dialect (see README "Switching to Postgres").
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/docdebt;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+    database-platform: ${DB_DIALECT:org.hibernate.dialect.H2Dialect}
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+# ---- App-specific config ----
+docdebt:
+  volatility:
+    threshold: 50
+    pr-weight: 10
+    day-weight: 1
+    schedule-cron: "0 0 2 * * *"   # nightly at 2am
+
+  github:
+    token: ${GITHUB_TOKEN:}
+    webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+    api-base-url: https://api.github.com
+
+  # Where technical/business docs are stored. "local" (default) needs zero
+  # setup - plain files on disk. Switch to "onedrive" once you're ready to
+  # deal with the Entra app registration (see README "Moving to OneDrive").
+  storage:
+    mode: ${DOC_STORAGE_MODE:local}
+    local:
+      technical-root: ${TECHNICAL_DOCS_ROOT:./docs/Technical}
+      business-root: ${BUSINESS_DOCS_ROOT:./docs/Business}
+
+  # Personal OneDrive (consumer account) via delegated auth + device code flow.
+  # Only used when docdebt.storage.mode=onedrive. See README "OneDrive setup" -
+  # no tenant ID / client secret needed, and no admin consent required since
+  # this is just your own personal account.
+  onedrive:
+    client-id: ${ONEDRIVE_CLIENT_ID:}
+    token-store-path: ${ONEDRIVE_TOKEN_STORE_PATH:./data/onedrive-token.json}
+    docs-root: ${ONEDRIVE_DOCS_ROOT:ArchitectureDocs}
+
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    fast-model: ${GEMINI_FAST_MODEL:gemini-2.0-flash}
+    power-model: ${GEMINI_POWER_MODEL:gemini-2.0-flash}
+    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+    base-url: https://generativelanguage.googleapis.com/v1beta
+
+  semantic:
+    similarity-threshold: 0.85
+
+# CORS for local React dev server
+cors:
+  allowed-origins: ${CORS_ORIGIN:http://localhost:5173}
+
+logging:
+  level:
+    com.docdebt: INFO
