@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -16,8 +20,12 @@ import org.springframework.web.client.RestTemplate;
  * Docs: https://ai.google.dev/api/generate-content
  */
 @Service
+@Slf4j
 public class GeminiService {
 
+//
+//    private static final Logger log =
+//            LoggerFactory.getLogger(GeminiService.class);
     private final RestTemplate restTemplate;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -147,8 +155,30 @@ public class GeminiService {
     }
 
     /** Returns an embedding vector for the given text (used for semantic discovery). */
+//    public float[] embed(String text) {
+//        String url = "%s/models/%s:embedContent?key=%s".formatted(baseUrl, embeddingModel, apiKey);
+//
+//        ObjectNode body = mapper.createObjectNode();
+//        ObjectNode content = body.putObject("content");
+//        ArrayNode parts = content.putArray("parts");
+//        parts.addObject().put("text", truncate(text, 8000));
+//
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.setContentType(MediaType.APPLICATION_JSON);
+//        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+//
+//        JsonNode response = restTemplate.postForObject(url, entity, JsonNode.class);
+//        JsonNode values = response.path("embedding").path("values");
+//        float[] vec = new float[values.size()];
+//        for (int i = 0; i < values.size(); i++) {
+//            vec[i] = (float) values.get(i).asDouble();
+//        }
+//        return vec;
+//    }
+
     public float[] embed(String text) {
-        String url = "%s/models/%s:embedContent?key=%s".formatted(baseUrl, embeddingModel, apiKey);
+        String url = "%s/models/%s:embedContent"
+                .formatted(baseUrl, embeddingModel);
 
         ObjectNode body = mapper.createObjectNode();
         ObjectNode content = body.putObject("content");
@@ -157,15 +187,70 @@ public class GeminiService {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+        headers.set("x-goog-api-key", apiKey.trim());
 
-        JsonNode response = restTemplate.postForObject(url, entity, JsonNode.class);
-        JsonNode values = response.path("embedding").path("values");
-        float[] vec = new float[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            vec[i] = (float) values.get(i).asDouble();
+        HttpEntity<String> entity =
+                new HttpEntity<>(body.toString(), headers);
+
+        long start = System.nanoTime();
+
+        log.info(
+                "Sending Gemini embedding request: model={}, textLength={}, url={}",
+                embeddingModel,
+                text == null ? 0 : text.length(),
+                url
+        );
+
+        try {
+            JsonNode response =
+                    restTemplate.postForObject(url, entity, JsonNode.class);
+
+            long elapsedMs =
+                    (System.nanoTime() - start) / 1_000_000;
+
+            JsonNode values =
+                    response.path("embedding").path("values");
+
+            if (!values.isArray() || values.isEmpty()) {
+                log.error(
+                        "Gemini embedding response contained no vector: elapsedMs={}, response={}",
+                        elapsedMs,
+                        response
+                );
+
+                throw new IllegalStateException(
+                        "Gemini returned no embedding");
+            }
+
+            log.info(
+                    "Gemini embedding response received: model={}, vectorDimensions={}, elapsedMs={}",
+                    embeddingModel,
+                    values.size(),
+                    elapsedMs
+            );
+
+            float[] vector = new float[values.size()];
+
+            for (int i = 0; i < values.size(); i++) {
+                vector[i] = (float) values.get(i).asDouble();
+            }
+
+            return vector;
+
+        } catch (Exception ex) {
+            long elapsedMs =
+                    (System.nanoTime() - start) / 1_000_000;
+
+            log.error(
+                    "Gemini embedding request failed: model={}, elapsedMs={}, error={}",
+                    embeddingModel,
+                    elapsedMs,
+                    ex.getMessage(),
+                    ex
+            );
+
+            throw ex;
         }
-        return vec;
     }
 
     private DualSummary parseDualSummary(String raw) {
@@ -186,28 +271,123 @@ public class GeminiService {
         return raw.substring(start, end).trim();
     }
 
+//    private String generateContent(String model, String prompt) {
+//        String url = "%s/models/%s:generateContent?key=%s".formatted(baseUrl, model, apiKey);
+//
+//        ObjectNode body = mapper.createObjectNode();
+//        ArrayNode contents = body.putArray("contents");
+//        ObjectNode userContent = contents.addObject();
+//        ArrayNode parts = userContent.putArray("parts");
+//        parts.addObject().put("text", prompt);
+//
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.setContentType(MediaType.APPLICATION_JSON);
+//        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+//
+//        JsonNode response = restTemplate.postForObject(url, entity, JsonNode.class);
+//        return response
+//                .path("candidates").path(0)
+//                .path("content").path("parts").path(0)
+//                .path("text").asText("");
+//    }
+
     private String generateContent(String model, String prompt) {
-        String url = "%s/models/%s:generateContent?key=%s".formatted(baseUrl, model, apiKey);
+        String url = "%s/models/%s:generateContent"
+                .formatted(baseUrl, model);
 
         ObjectNode body = mapper.createObjectNode();
         ArrayNode contents = body.putArray("contents");
+
         ObjectNode userContent = contents.addObject();
         ArrayNode parts = userContent.putArray("parts");
         parts.addObject().put("text", prompt);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+        headers.set("x-goog-api-key", apiKey.trim());
 
-        JsonNode response = restTemplate.postForObject(url, entity, JsonNode.class);
-        return response
-                .path("candidates").path(0)
-                .path("content").path("parts").path(0)
-                .path("text").asText("");
+        HttpEntity<String> entity =
+                new HttpEntity<>(body.toString(), headers);
+
+        long start = System.nanoTime();
+
+        log.info(
+                "Sending Gemini generation request: model={}, promptLength={}, url={}",
+                model,
+                prompt == null ? 0 : prompt.length(),
+                url
+        );
+
+        try {
+            JsonNode response =
+                    restTemplate.postForObject(url, entity, JsonNode.class);
+
+            long elapsedMs =
+                    (System.nanoTime() - start) / 1_000_000;
+
+            JsonNode candidates = response.path("candidates");
+            String generatedText = response
+                    .path("candidates")
+                    .path(0)
+                    .path("content")
+                    .path("parts")
+                    .path(0)
+                    .path("text")
+                    .asText("");
+
+            if (generatedText.isBlank()) {
+                log.error(
+                        "Gemini returned no generated text: model={}, elapsedMs={}, candidatesPresent={}, response={}",
+                        model,
+                        elapsedMs,
+                        candidates.isArray() && !candidates.isEmpty(),
+                        response
+                );
+
+                throw new IllegalStateException(
+                        "Gemini returned an empty response");
+            }
+
+            log.info(
+                    "Gemini generation response received: model={}, responseLength={}, elapsedMs={}",
+                    model,
+                    generatedText.length(),
+                    elapsedMs
+            );
+
+            return generatedText;
+
+        } catch (Exception ex) {
+            long elapsedMs =
+                    (System.nanoTime() - start) / 1_000_000;
+
+            log.error(
+                    "Gemini generation request failed: model={}, elapsedMs={}, error={}",
+                    model,
+                    elapsedMs,
+                    ex.getMessage(),
+                    ex
+            );
+
+            throw ex;
+        }
     }
+
 
     private String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() > max ? s.substring(0, max) + "\n...[truncated]" : s;
+    }
+
+    @PostConstruct
+    void logGeminiConfiguration() {
+        log.info(
+                "Gemini configuration loaded: baseUrl={}, fastModel={}, powerModel={}, embeddingModel={}, apiKeyConfigured={}",
+                baseUrl,
+                fastModel,
+                powerModel,
+                embeddingModel,
+                apiKey != null && !apiKey.isBlank()
+        );
     }
 }

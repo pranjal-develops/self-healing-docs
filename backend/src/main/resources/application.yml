@@ -61,11 +61,12 @@ docdebt:
     docs-root: ${ONEDRIVE_DOCS_ROOT:ArchitectureDocs}
 
   gemini:
-    api-key: ${GEMINI_API_KEY:}
-    fast-model: ${GEMINI_FAST_MODEL:gemini-2.0-flash}
-    power-model: ${GEMINI_POWER_MODEL:gemini-2.0-flash}
-    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
+    api-key: ${GEMINI_API_KEY}
+    fast-model: ${GEMINI_FAST_MODEL:gemini-3.5-flash-lite}
+    power-model: ${GEMINI_POWER_MODEL:gemini-3.8-flash}
+    embedding-model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     base-url: https://generativelanguage.googleapis.com/v1beta
+#    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
 
   semantic:
     similarity-threshold: 0.85
