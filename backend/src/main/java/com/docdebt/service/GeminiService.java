@@ -154,6 +154,11 @@ public class GeminiService {
         return generateContent(powerModel, prompt);
     }
 
+    /** Impact analysis: determine which modules are affected and what docs need updates */
+    public String analyzeImpact(String prompt) {
+        return generateContent(powerModel, prompt);
+    }
+
     /** Returns an embedding vector for the given text (used for semantic discovery). */
 //    public float[] embed(String text) {
 //        String url = "%s/models/%s:embedContent?key=%s".formatted(baseUrl, embeddingModel, apiKey);

@@ -6,6 +6,7 @@ import com.docdebt.repository.ModuleRepository;
 import com.docdebt.repository.PrSummaryRepository;
 import com.docdebt.service.GeminiService;
 import com.docdebt.service.GitHubService;
+import com.docdebt.service.ImpactAnalysisService;
 import com.docdebt.service.VolatilityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -24,18 +25,21 @@ public class GitHubWebhookController {
     private final ModuleRepository moduleRepository;
     private final PrSummaryRepository prSummaryRepository;
     private final VolatilityService volatilityService;
+    private final ImpactAnalysisService impactAnalysisService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public GitHubWebhookController(GitHubService gitHubService,
                                     GeminiService geminiService,
                                     ModuleRepository moduleRepository,
                                     PrSummaryRepository prSummaryRepository,
-                                    VolatilityService volatilityService) {
+                                    VolatilityService volatilityService,
+                                    ImpactAnalysisService impactAnalysisService) {
         this.gitHubService = gitHubService;
         this.geminiService = geminiService;
         this.moduleRepository = moduleRepository;
         this.prSummaryRepository = prSummaryRepository;
         this.volatilityService = volatilityService;
+        this.impactAnalysisService = impactAnalysisService;
     }
 
     /**
@@ -62,10 +66,6 @@ public class GitHubWebhookController {
             String action = json.path("action").asText();
             boolean merged = json.path("pull_request").path("merged").asBoolean(false);
 
-            if (!"closed".equals(action) || !merged) {
-                return ResponseEntity.ok("ignored (not a merge)");
-            }
-
             long prNumber = json.path("pull_request").path("number").asLong();
             String prTitle = json.path("pull_request").path("title").asText();
             String prBody = json.path("pull_request").path("body").asText(null);
@@ -73,8 +73,18 @@ public class GitHubWebhookController {
             String author = json.path("pull_request").path("user").path("login").asText();
             String repoFullName = json.path("repository").path("full_name").asText();
 
-            // 1. Map phase: fetch diff, get both a technical and a business summary
             String diff = gitHubService.fetchPullRequestDiff(repoFullName, prNumber);
+
+            if ("opened".equals(action)) {
+                handlePROpened(prNumber, prTitle, prBody, diff, repoFullName);
+                return ResponseEntity.ok("impact analysis triggered for PR #%d".formatted(prNumber));
+            }
+
+            if (!"closed".equals(action) || !merged) {
+                return ResponseEntity.ok("ignored (not a merge)");
+            }
+
+            // 1. Map phase: fetch diff, get both a technical and a business summary
             String moduleName = gitHubService.inferModuleFromDiff(diff);
             GeminiService.DualSummary summary = geminiService.summarizeDiff(prTitle, prBody, diff);
 
@@ -94,5 +104,18 @@ public class GitHubWebhookController {
             log.error("Failed to process GitHub webhook", e);
             return ResponseEntity.status(500).body("error: " + e.getMessage());
         }
+    }
+
+    private void handlePROpened(long prNumber, String prTitle, String prBody, String diff, String repoFullName) {
+        log.info("PR opened - triggering impact analysis: PR #{} - {}", prNumber, prTitle);
+
+        ImpactAnalysisService.ImpactResult impact = impactAnalysisService.analyzeImpact(prTitle, prBody, diff);
+
+        log.info("Impact analysis complete for PR #{}: affectedModules={}, docUpdates={}",
+                prNumber, impact.affectedModules(), impact.docUpdatesNeeded());
+
+        impact.docUpdatesNeeded().forEach((module, updates) -> {
+            log.info("Module '{}' needs updates: {}", module, String.join(", ", updates));
+        });
     }
 }

@@ -1,5 +1,6 @@
 com\docdebt\service\VolatilityService.class
 com\docdebt\dto\GitHubWebhookPayload$Repository.class
+com\docdebt\service\ImpactAnalysisService.class
 com\docdebt\dto\ModuleStatusDto.class
 com\docdebt\service\HealingService.class
 com\docdebt\service\LocalDocService.class
@@ -8,6 +9,7 @@ com\docdebt\controller\DashboardController$ErrorResponse.class
 com\docdebt\controller\GitHubWebhookController.class
 com\docdebt\entity\PrSummary.class
 com\docdebt\DocDebtApplication.class
+com\docdebt\service\ImpactAnalysisService$ImpactResult.class
 com\docdebt\repository\ModuleRepository.class
 com\docdebt\service\OneDriveAuthService.class
 com\docdebt\service\SemanticDiscoveryService.class
@@ -26,6 +28,7 @@ com\docdebt\service\OneDriveTokenStore$TokenRecord.class
 com\docdebt\dto\GitHubWebhookPayload.class
 com\docdebt\dto\HealResultDto$DocHealResult.class
 com\docdebt\controller\DashboardController.class
+com\docdebt\service\SharePointDocService.class
 com\docdebt\dto\GitHubWebhookPayload$PullRequest.class
 com\docdebt\controller\DashboardController$CreateModuleRequest.class
 com\docdebt\tools\OneDriveLoginTool.class
