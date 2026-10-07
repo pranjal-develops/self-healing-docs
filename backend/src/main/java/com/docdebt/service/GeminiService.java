@@ -1,5 +1,6 @@
 package com.docdebt.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -207,8 +208,9 @@ public class GeminiService {
         );
 
         try {
-            JsonNode response =
-                    restTemplate.postForObject(url, entity, JsonNode.class);
+            String responseJson =
+                    restTemplate.postForObject(url, entity, String.class);
+            JsonNode response = mapper.readTree(responseJson);
 
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;
@@ -220,7 +222,7 @@ public class GeminiService {
                 log.error(
                         "Gemini embedding response contained no vector: elapsedMs={}, response={}",
                         elapsedMs,
-                        response
+                        responseJson
                 );
 
                 throw new IllegalStateException(
@@ -242,6 +244,9 @@ public class GeminiService {
 
             return vector;
 
+        } catch (JsonProcessingException ex) {
+            log.error("Failed to parse Gemini embedding response", ex);
+            throw new IllegalStateException("Failed to parse Gemini response", ex);
         } catch (Exception ex) {
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;
@@ -324,8 +329,9 @@ public class GeminiService {
         );
 
         try {
-            JsonNode response =
-                    restTemplate.postForObject(url, entity, JsonNode.class);
+            String responseJson =
+                    restTemplate.postForObject(url, entity, String.class);
+            JsonNode response = mapper.readTree(responseJson);
 
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;
@@ -346,7 +352,7 @@ public class GeminiService {
                         model,
                         elapsedMs,
                         candidates.isArray() && !candidates.isEmpty(),
-                        response
+                        responseJson
                 );
 
                 throw new IllegalStateException(
@@ -362,6 +368,9 @@ public class GeminiService {
 
             return generatedText;
 
+        } catch (JsonProcessingException ex) {
+            log.error("Failed to parse Gemini generation response", ex);
+            throw new IllegalStateException("Failed to parse Gemini response", ex);
         } catch (Exception ex) {
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;

@@ -211,10 +211,12 @@ docdebt:
    - Content type: `application/json`
    - Events: `Pull requests`
 
-2. Set webhook secret (recommended for production):
-   ```bash
-   export GITHUB_WEBHOOK_SECRET=your-random-secret
-   ```
+2. Webhook secret (choose one):
+   - **For local development**: Leave the "Secret" field empty in GitHub webhook settings
+   - **For production**: Set a secret and pass as environment variable:
+     ```bash
+     export GITHUB_WEBHOOK_SECRET=your-random-secret
+     ```
 
 3. Configure GitHub token (for fetching PR diffs):
    ```bash

@@ -1,6 +1,8 @@
 package com.docdebt.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -34,6 +36,7 @@ public class OneDriveAuthService {
 
     private final RestTemplate restTemplate;
     private final OneDriveTokenStore tokenStore;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${docdebt.onedrive.client-id}")
     private String clientId;
@@ -80,22 +83,27 @@ public class OneDriveAuthService {
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, headers);
 
-        JsonNode response = restTemplate.postForObject(TOKEN_URL, entity, JsonNode.class);
+        try {
+            String responseStr = restTemplate.postForObject(TOKEN_URL, entity, String.class);
+            JsonNode response = mapper.readTree(responseStr);
 
-        if (response.has("error")) {
-            throw new IllegalStateException("OneDrive token refresh failed: " + response.path("error_description").asText());
+            if (response.has("error")) {
+                throw new IllegalStateException("OneDrive token refresh failed: " + response.path("error_description").asText());
+            }
+
+            String newAccessToken = response.path("access_token").asText();
+            // MSA rotates refresh tokens on every use - always save the new one.
+            String newRefreshToken = response.path("refresh_token").asText(refreshToken);
+            int expiresIn = response.path("expires_in").asInt(3600);
+            long expiresAt = Instant.now().plusSeconds(expiresIn - 60).getEpochSecond();
+
+            tokenStore.save(new OneDriveTokenStore.TokenRecord(newAccessToken, newRefreshToken, expiresAt));
+
+            cachedAccessToken = newAccessToken;
+            cachedExpiry = Instant.ofEpochSecond(expiresAt);
+            return newAccessToken;
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Failed to parse OneDrive token response", ex);
         }
-
-        String newAccessToken = response.path("access_token").asText();
-        // MSA rotates refresh tokens on every use - always save the new one.
-        String newRefreshToken = response.path("refresh_token").asText(refreshToken);
-        int expiresIn = response.path("expires_in").asInt(3600);
-        long expiresAt = Instant.now().plusSeconds(expiresIn - 60).getEpochSecond();
-
-        tokenStore.save(new OneDriveTokenStore.TokenRecord(newAccessToken, newRefreshToken, expiresAt));
-
-        cachedAccessToken = newAccessToken;
-        cachedExpiry = Instant.ofEpochSecond(expiresAt);
-        return cachedAccessToken;
     }
 }

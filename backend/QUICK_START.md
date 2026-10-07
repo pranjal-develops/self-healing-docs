@@ -41,7 +41,11 @@ That's it! The system will:
    - Payload URL: `http://your-server:8080/webhook/github`
    - Content type: `application/json`
    - Events: `Pull requests`
-3. (Optional) Set webhook secret and set `GITHUB_WEBHOOK_SECRET` env var
+3. **Webhook Secret** (choose one):
+   - **For local development**: Leave the "Secret" field empty (recommended)
+   - **For production**: Set a secret and pass it as environment variable: `GITHUB_WEBHOOK_SECRET=your-secret`
+
+**Note:** For local development, leaving the secret empty is simpler and the system will skip signature validation safely.
 
 ## Switch to SharePoint (Enterprise)
 
