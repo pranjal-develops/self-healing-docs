@@ -8,14 +8,24 @@ import com.docdebt.repository.ModuleRepository;
 import com.docdebt.repository.PrSummaryRepository;
 import com.docdebt.service.HealingService;
 import com.docdebt.service.VolatilityService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Random;
 
+/**
+ * Dashboard REST API.
+ *
+ * Security: all endpoints require an X-API-Key header that matches
+ * docdebt.api.key. If docdebt.api.allow-anonymous=true the check is
+ * skipped (use only for local development).
+ */
 @RestController
 @RequestMapping("/api")
+@Slf4j
 public class DashboardController {
 
     private final ModuleRepository moduleRepository;
@@ -23,6 +33,16 @@ public class DashboardController {
     private final VolatilityService volatilityService;
     private final HealingService healingService;
 
+    @Value("${docdebt.api.key:}")
+    private String apiKey;
+
+    @Value("${docdebt.api.allow-anonymous:true}")
+    private boolean allowAnonymous;
+
+    @Value("${docdebt.demo.enabled:true}")
+    private boolean demoEnabled;
+
+    // ---- Fake data for the Time Travel simulator ----
     private static final String[] FAKE_PR_TITLES = {
             "Refactor request validation",
             "Add retry logic to downstream call",
@@ -30,10 +50,6 @@ public class DashboardController {
             "Bump dependency & fix breaking change",
             "Add circuit breaker around external API"
     };
-    // Paired technical / business summaries so the simulated data exercises both docs realistically.
-    // Deliberately domain-neutral (no "payment", "checkout", etc.) since this same canned data
-    // gets used regardless of what module name you type - it's illustrative, not analysis of
-    // your actual code.
     private static final String[] FAKE_TECHNICAL_SUMMARIES = {
             "Added input validation on the create endpoint and extracted a shared validator class.",
             "Introduced exponential backoff retries for a downstream service call.",
@@ -59,49 +75,139 @@ public class DashboardController {
         this.healingService = healingService;
     }
 
+    // ---- Auth helper -------------------------------------------------------
+
+    /**
+     * Returns a 403 ResponseEntity if the API key check fails, null otherwise.
+     * Callers should: var authError = checkAuth(key); if (authError != null) return authError;
+     */
+    private ResponseEntity<?> checkAuth(String providedKey) {
+        if (allowAnonymous) return null;
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("No API key configured and allow-anonymous=false. Set DOCDEBT_API_KEY or docdebt.api.allow-anonymous=true.");
+            return ResponseEntity.status(403).body(new ErrorResponse("API key not configured on server."));
+        }
+        if (!apiKey.equals(providedKey)) {
+            return ResponseEntity.status(403).body(new ErrorResponse("Invalid or missing X-API-Key header."));
+        }
+        return null;
+    }
+
+    // ---- Endpoints ---------------------------------------------------------
+
     /** Powers the Debt Heatmap. */
     @GetMapping("/modules")
-    public List<ModuleStatusDto> listModules() {
+    public ResponseEntity<?> listModules(
+            @RequestHeader(value = "X-API-Key", required = false) String key) {
+        var auth = checkAuth(key);
+        if (auth != null) return auth;
+
         int threshold = volatilityService.getThreshold();
-        return moduleRepository.findAll().stream()
-                .map(m -> ModuleStatusDto.from(
-                        m,
-                        prSummaryRepository.countByModuleAndProcessedFalse(m),
-                        threshold))
+        List<ModuleStatusDto> result = moduleRepository.findAll().stream()
+                .map(m -> ModuleStatusDto.from(m, prSummaryRepository.countByModuleAndProcessedFalse(m), threshold))
                 .toList();
+        return ResponseEntity.ok(result);
     }
 
-    /** Creates a module manually (useful for seeding a demo without a real repo). */
+    /**
+     * Creates a module manually. Useful for seeding a demo without a real repo
+     * or for pre-registering a module before the first PR lands.
+     *
+     * Body: { name, technicalDocPath?, businessDocPath?,
+     *         docStorageTarget?, prHealThreshold? }
+     */
     @PostMapping("/modules")
-    public CodeModule createModule(@RequestBody CreateModuleRequest request) {
-        CodeModule module = new CodeModule(request.name(), request.technicalDocPath(), request.businessDocPath());
-        return moduleRepository.save(module);
+    public ResponseEntity<?> createModule(
+            @RequestHeader(value = "X-API-Key", required = false) String key,
+            @RequestBody CreateModuleRequest request) {
+        var auth = checkAuth(key);
+        if (auth != null) return auth;
+
+        String name = request.name() == null ? null : request.name().trim();
+        if (name == null || name.isBlank()) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Module name is required."));
+        }
+
+        // Check duplicate
+        if (moduleRepository.findByName(name).isPresent()) {
+            return ResponseEntity.status(409).body(new ErrorResponse("Module '" + name + "' already exists."));
+        }
+
+        String target = request.docStorageTarget() != null ? request.docStorageTarget() : "github";
+        int threshold = request.prHealThreshold() != null && request.prHealThreshold() > 0
+                ? request.prHealThreshold() : 1;
+
+        CodeModule module = new CodeModule(name, request.technicalDocPath(), request.businessDocPath(), target, threshold);
+        return ResponseEntity.ok(moduleRepository.save(module));
     }
 
-    /** The "Heal Now" button: manually fires the Map-Reduce healing pipeline immediately (both docs). */
+    public record UpdateModuleSettingsRequest(String docStorageTarget, Integer prHealThreshold) {}
+
+    /** Updates storage target and/or PR heal threshold for an existing module. */
+    @PatchMapping("/modules/{id}")
+    public ResponseEntity<?> updateModuleSettings(
+            @RequestHeader(value = "X-API-Key", required = false) String key,
+            @PathVariable Long id,
+            @RequestBody UpdateModuleSettingsRequest request) {
+        var auth = checkAuth(key);
+        if (auth != null) return auth;
+
+        CodeModule module = moduleRepository.findById(id).orElse(null);
+        if (module == null) return ResponseEntity.notFound().build();
+
+        if (request.docStorageTarget() != null && !request.docStorageTarget().isBlank()) {
+            module.setDocStorageTarget(request.docStorageTarget().toLowerCase());
+        }
+        if (request.prHealThreshold() != null && request.prHealThreshold() > 0) {
+            module.setPrHealThreshold(request.prHealThreshold());
+        }
+
+        moduleRepository.save(module);
+
+        int threshold = volatilityService.getThreshold();
+        return ResponseEntity.ok(ModuleStatusDto.from(
+                module, prSummaryRepository.countByModuleAndProcessedFalse(module), threshold));
+    }
+
+    /** Heal Now button: manually fires the Map-Reduce healing pipeline. */
     @PostMapping("/modules/{id}/heal")
-    public ResponseEntity<?> healNow(@PathVariable Long id) {
-        CodeModule module = moduleRepository.findById(id).orElseThrow();
+    public ResponseEntity<?> healNow(
+            @RequestHeader(value = "X-API-Key", required = false) String key,
+            @PathVariable Long id) {
+        var auth = checkAuth(key);
+        if (auth != null) return auth;
+
+        CodeModule module = moduleRepository.findById(id).orElse(null);
+        if (module == null) return ResponseEntity.notFound().build();
+
         try {
             HealResultDto result = healingService.heal(module);
             return ResponseEntity.ok(result);
         } catch (IllegalStateException e) {
-            // Thrown when there's no pending PR history to heal from - refuse rather
-            // than let the LLM invent content with nothing real to base it on.
             return ResponseEntity.status(409).body(new ErrorResponse(e.getMessage()));
         }
     }
 
-    public record ErrorResponse(String message) {}
-
     /**
-     * The "Time Travel" button: simulates N rapid PR merges against a module
-     * without needing real GitHub traffic, so judges can watch the score spike.
+     * Time Travel button: simulates N rapid PR merges.
+     * Only available when docdebt.demo.enabled=true.
      */
     @PostMapping("/modules/{id}/simulate")
-    public ResponseEntity<ModuleStatusDto> simulate(@PathVariable Long id,
-                                                      @RequestParam(defaultValue = "5") int count) {
-        CodeModule module = moduleRepository.findById(id).orElseThrow();
+    public ResponseEntity<?> simulate(
+            @RequestHeader(value = "X-API-Key", required = false) String key,
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "5") int count) {
+        var auth = checkAuth(key);
+        if (auth != null) return auth;
+
+        if (!demoEnabled) {
+            return ResponseEntity.status(403).body(
+                    new ErrorResponse("Time Travel simulator is disabled. Set docdebt.demo.enabled=true to enable."));
+        }
+
+        CodeModule module = moduleRepository.findById(id).orElse(null);
+        if (module == null) return ResponseEntity.notFound().build();
+
         Random rand = new Random();
         for (int i = 0; i < count; i++) {
             int idx = rand.nextInt(FAKE_TECHNICAL_SUMMARIES.length);
@@ -115,12 +221,23 @@ public class DashboardController {
             );
             prSummaryRepository.save(summary);
         }
-        int score = volatilityService.recalculate(module);
+        volatilityService.recalculate(module);
+        int threshold = volatilityService.getThreshold();
         return ResponseEntity.ok(ModuleStatusDto.from(
-                module,
-                prSummaryRepository.countByModuleAndProcessedFalse(module),
-                volatilityService.getThreshold()));
+                module, prSummaryRepository.countByModuleAndProcessedFalse(module), threshold));
     }
 
-    public record CreateModuleRequest(String name, String technicalDocPath, String businessDocPath) {}
+    // ---- Records -----------------------------------------------------------
+
+    public record ErrorResponse(String message) {}
+
+    public record CreateModuleRequest(
+            String name,
+            String technicalDocPath,
+            String businessDocPath,
+            /** Where healed docs are published: "github" (default), "onedrive", "sharepoint" */
+            String docStorageTarget,
+            /** Auto-heal after this many unprocessed PRs. Default is 1. */
+            Integer prHealThreshold
+    ) {}
 }

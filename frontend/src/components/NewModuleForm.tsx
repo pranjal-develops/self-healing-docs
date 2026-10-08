@@ -1,19 +1,28 @@
 import { useState, type FormEvent } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { api } from '../api'
+import { api, type CreateModuleRequest } from '../api'
 
 interface NewModuleFormProps {
   onCreated: () => void | Promise<void>
 }
 
-export default function NewModuleForm({
-  onCreated,
-}: NewModuleFormProps) {
+type StorageTarget = 'github' | 'onedrive' | 'sharepoint'
+
+const STORAGE_OPTIONS: { value: StorageTarget; label: string; hint: string }[] = [
+  { value: 'github', label: 'GitHub Docs', hint: 'Commits healed docs into docs/ folder of your repo (recommended)' },
+  { value: 'onedrive', label: 'OneDrive', hint: 'Pushes healed docs to personal OneDrive via Microsoft Graph' },
+  { value: 'sharepoint', label: 'SharePoint', hint: 'Pushes healed docs to SharePoint/OneDrive for Business' },
+]
+
+export default function NewModuleForm({ onCreated }: NewModuleFormProps) {
   const [open, setOpen] = useState<boolean>(false)
   const [name, setName] = useState<string>('')
   const [technicalDocPath, setTechnicalDocPath] = useState<string>('')
   const [businessDocPath, setBusinessDocPath] = useState<string>('')
+  const [storageTarget, setStorageTarget] = useState<StorageTarget>('github')
+  const [prHealThreshold, setPrHealThreshold] = useState<number>(1)
   const [submitting, setSubmitting] = useState<boolean>(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -21,17 +30,25 @@ export default function NewModuleForm({
     if (!trimmedName) return
 
     setSubmitting(true)
+    setError(null)
     try {
-      await api.createModule(
-        trimmedName,
-        technicalDocPath.trim() || null,
-        businessDocPath.trim() || null,
-      )
+      const payload: CreateModuleRequest = {
+        name: trimmedName,
+        technicalDocPath: technicalDocPath.trim() || null,
+        businessDocPath: businessDocPath.trim() || null,
+        docStorageTarget: storageTarget,
+        prHealThreshold: Math.max(1, prHealThreshold),
+      }
+      await api.createModule(payload)
       setName('')
       setTechnicalDocPath('')
       setBusinessDocPath('')
+      setStorageTarget('github')
+      setPrHealThreshold(1)
       setOpen(false)
       await onCreated()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create module')
     } finally {
       setSubmitting(false)
     }
@@ -67,15 +84,7 @@ export default function NewModuleForm({
               whileHover={{ rotate: 90 }}
               transition={{ type: 'spring', stiffness: 400, damping: 20 }}
             >
-              <svg
-                className="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
@@ -102,15 +111,7 @@ export default function NewModuleForm({
                 aria-label="Close"
                 className="text-[color:var(--color-muted)] transition hover:text-[color:var(--color-ink)] disabled:opacity-50"
               >
-                <svg
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
@@ -120,6 +121,7 @@ export default function NewModuleForm({
             <div className="space-y-4">
               <Field label="Module name" hint="required">
                 <input
+                  id="module-name"
                   type="text"
                   placeholder="PaymentService"
                   value={name}
@@ -132,8 +134,9 @@ export default function NewModuleForm({
 
               <Field label="Technical doc path" hint="optional">
                 <input
+                  id="technical-doc-path"
                   type="text"
-                  placeholder="docs/tech/payment.md"
+                  placeholder="docs/Technical/PaymentService-HLD.md"
                   value={technicalDocPath}
                   onChange={(e) => setTechnicalDocPath(e.target.value)}
                   className={inputCls}
@@ -142,14 +145,90 @@ export default function NewModuleForm({
 
               <Field label="Business doc path" hint="optional">
                 <input
+                  id="business-doc-path"
                   type="text"
-                  placeholder="docs/business/payment.md"
+                  placeholder="docs/Business/PaymentService-Business.md"
                   value={businessDocPath}
                   onChange={(e) => setBusinessDocPath(e.target.value)}
                   className={inputCls}
                 />
               </Field>
+
+              {/* Storage target */}
+              <Field label="Doc storage target" hint="default: GitHub">
+                <div className="mt-2 flex flex-col gap-2">
+                  {STORAGE_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`flex cursor-pointer items-start gap-3 rounded border p-3 transition ${
+                        storageTarget === opt.value
+                          ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5'
+                          : 'border-[color:var(--color-line)] hover:border-[color:var(--color-line-strong)]'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="storageTarget"
+                        value={opt.value}
+                        checked={storageTarget === opt.value}
+                        onChange={() => setStorageTarget(opt.value)}
+                        className="mt-0.5 shrink-0 accent-[color:var(--color-accent)]"
+                      />
+                      <div>
+                        <div className="font-mono text-[11px] font-semibold uppercase tracking-widest text-[color:var(--color-ink)]">
+                          {opt.label}
+                          {opt.value === 'github' && (
+                            <span className="ml-1.5 font-normal normal-case tracking-normal text-[color:var(--color-good)]">
+                              ← recommended
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 font-mono text-[10px] text-[color:var(--color-muted)]">
+                          {opt.hint}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </Field>
+
+              {/* PR heal threshold */}
+              <Field label="Auto-heal after N PRs" hint={`current: ${prHealThreshold}`}>
+                <div className="mt-2 flex items-center gap-4">
+                  <input
+                    id="pr-heal-threshold"
+                    type="range"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={prHealThreshold}
+                    onChange={(e) => setPrHealThreshold(Number(e.target.value))}
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded bg-[color:var(--color-line)] accent-[color:var(--color-accent)]"
+                  />
+                  <span className="display w-8 shrink-0 text-right tabular text-2xl leading-none text-[color:var(--color-ink)]">
+                    {prHealThreshold}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between font-mono text-[9px] text-[color:var(--color-faint)]">
+                  <span>1 (every PR)</span>
+                  <span>20</span>
+                </div>
+              </Field>
             </div>
+
+            {/* Error */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-4 border border-[color:var(--color-bad)]/30 bg-[color:var(--color-bad)]/5 px-3 py-2 font-mono text-[11px] text-[color:var(--color-bad)]"
+                >
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="mt-6 flex items-center gap-3 border-t border-[color:var(--color-line)] pt-4">
               <button
@@ -174,15 +253,7 @@ export default function NewModuleForm({
                 ) : (
                   <>
                     Confirm
-                    <svg
-                      className="h-3 w-3"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   </>

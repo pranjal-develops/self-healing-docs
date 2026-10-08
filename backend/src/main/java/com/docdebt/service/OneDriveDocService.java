@@ -1,5 +1,6 @@
 package com.docdebt.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.*;
@@ -8,23 +9,23 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Opt-in storage backend: reads/writes docs on a personal OneDrive via
- * Microsoft Graph's /me/drive endpoint (delegated auth - see
- * OneDriveAuthService for the token lifecycle). Disabled by default -
- * enable with docdebt.storage.mode=onedrive once local storage has proven
- * the pipeline out and you're ready to deal with the Entra app registration.
+ * OneDrive storage backend via Microsoft Graph /me/drive endpoint.
+ * Enable with: docdebt.storage.mode=onedrive
  *
- * Docs: https://learn.microsoft.com/graph/api/driveitem-put-content
+ * Fix: only HttpClientErrorException.NotFound (404) means "file missing" —
+ * other errors (auth failures, network issues) now propagate instead of
+ * returning null, which would previously cause healing to scaffold a new
+ * doc over an existing one.
  */
+@Slf4j
 @Service
-@ConditionalOnProperty(name = "docdebt.storage.mode", havingValue = "onedrive")
 public class OneDriveDocService implements DocStorageService {
 
     private final RestTemplate restTemplate;
     private final OneDriveAuthService authService;
 
-    @Value("${docdebt.onedrive.docs-root}")
-    private String docsRoot; // e.g. "ArchitectureDocs"
+    @Value("${docdebt.onedrive.docs-root:ArchitectureDocs}")
+    private String docsRoot;
 
     public OneDriveDocService(RestTemplate restTemplate, OneDriveAuthService authService) {
         this.restTemplate = restTemplate;
@@ -47,8 +48,10 @@ public class OneDriveDocService implements DocStorageService {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
             return response.getBody();
         } catch (HttpClientErrorException.NotFound e) {
+            // 404 is the only case that means "document does not exist yet"
             return null;
         }
+        // All other exceptions propagate — don't return null on auth failures or server errors
     }
 
     @Override

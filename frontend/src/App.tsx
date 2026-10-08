@@ -181,6 +181,7 @@ export default function App(): JSX.Element {
                   busyId={busyId}
                   onSimulate={handleSimulate}
                   onHeal={handleHeal}
+                  onSettingsUpdated={refresh}
                 />
               </motion.div>
             )}

@@ -6,9 +6,8 @@ spring:
     name: doc-debt-tracker
 
   # ---- Database ----
-  # Default: H2 file-based DB, zero setup, great for the hackathon demo.
-  # To use Postgres instead, set DB_URL / DB_USERNAME / DB_PASSWORD and switch
-  # the driver-class-name / dialect (see README "Switching to Postgres").
+  # Default: H2 file-based DB, zero setup, great for local dev.
+  # Switch to Postgres for production (set DB_URL / DB_USERNAME / DB_PASSWORD).
   datasource:
     url: ${DB_URL:jdbc:h2:file:./data/docdebt;AUTO_SERVER=TRUE}
     username: ${DB_USERNAME:sa}
@@ -31,21 +30,51 @@ spring:
 
 # ---- App-specific config ----
 docdebt:
-  volatility:
-    threshold: 50
-    pr-weight: 10
-    day-weight: 1
-    schedule-cron: "0 0 2 * * *"   # nightly at 2am
 
+  # ---- Volatility / drift scoring ----
+  volatility:
+    threshold: 50          # Score at which auto-healing is triggered
+    pr-weight: 10          # Points added per unprocessed PR
+    day-weight: 1          # Points added per day since last doc update
+    schedule-cron: "0 0 2 * * *"   # Nightly at 2 AM
+
+  # ---- GitHub integration ----
   github:
     token: ${GITHUB_TOKEN:}
     webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
     api-base-url: https://api.github.com
 
-  # Where technical/business docs are stored. "local" (default) needs zero
-  # setup - plain files on disk. Switch to "onedrive" for personal OneDrive,
-  # or "sharepoint" for enterprise SharePoint/OneDrive for Business.
-  # See README for setup instructions.
+    # SECURITY: set to true ONLY for local development when you cannot
+    # configure a webhook secret. Never enable in production.
+    allow-unsigned: ${GITHUB_ALLOW_UNSIGNED:false}
+
+    # Optional: post the impact analysis as a comment on opened PRs.
+    # Off by default to avoid noise on production repos.
+    post-pr-comments: ${GITHUB_POST_PR_COMMENTS:false}
+
+    # Defaults applied when a module is auto-created on first webhook
+    default-storage-target: ${DEFAULT_STORAGE_TARGET:github}
+    default-pr-heal-threshold: ${DEFAULT_PR_HEAL_THRESHOLD:1}
+
+  # ---- API security ----
+  # All /api/** endpoints require an X-API-Key header matching this value.
+  # Set DOCDEBT_API_KEY in your environment. For local development only,
+  # set allow-anonymous=true to bypass the check.
+  api:
+    key: ${DOCDEBT_API_KEY:}
+    allow-anonymous: ${API_ALLOW_ANONYMOUS:true}
+
+  # ---- Demo mode ----
+  # The Time Travel simulator is enabled by default for demos and local development.
+  demo:
+    enabled: ${DEMO_ENABLED:true}
+
+  # ---- Document storage ----
+  # "local"      = plain files on disk (default, zero setup)
+  # "onedrive"   = personal OneDrive via Microsoft Graph + device code flow
+  # "sharepoint" = enterprise SharePoint / OneDrive for Business
+  # Note: the per-module docStorageTarget overrides this global default at
+  # heal time. This setting governs which DocStorageService bean is active.
   storage:
     mode: ${DOC_STORAGE_MODE:local}
     local:
@@ -53,17 +82,15 @@ docdebt:
       business-root: ${BUSINESS_DOCS_ROOT:./docs/Business}
 
   # Personal OneDrive (consumer account) via delegated auth + device code flow.
-  # Only used when docdebt.storage.mode=onedrive. See README "OneDrive setup" -
-  # no tenant ID / client secret needed, and no admin consent required since
-  # this is just your own personal account.
+  # Only used when docdebt.storage.mode=onedrive.
   onedrive:
     client-id: ${ONEDRIVE_CLIENT_ID:}
     token-store-path: ${ONEDRIVE_TOKEN_STORE_PATH:./data/onedrive-token.json}
     docs-root: ${ONEDRIVE_DOCS_ROOT:ArchitectureDocs}
 
-  # SharePoint/OneDrive for Business (enterprise) via application permissions.
-  # Only used when docdebt.storage.mode=sharepoint. Requires Azure AD app registration
-  # with Graph API permissions (Sites.ReadWrite.All). See README "SharePoint setup".
+  # SharePoint / OneDrive for Business (enterprise) via app permissions.
+  # Only used when docdebt.storage.mode=sharepoint.
+  # Requires Azure AD app registration with Sites.ReadWrite.All.
   sharepoint:
     tenant-id: ${SHAREPOINT_TENANT_ID:}
     client-id: ${SHAREPOINT_CLIENT_ID:}
@@ -72,29 +99,36 @@ docdebt:
     drive-id: ${SHAREPOINT_DRIVE_ID:}
     docs-root: ${SHAREPOINT_DOCS_ROOT:ArchitectureDocs}
 
+  # ---- LLM provider ----
   llm:
     provider: ${LLM_PROVIDER:openrouter}
 
   openrouter:
     api-key: ${OPENROUTER_API_KEY:}
-    fast-model: ${OPENROUTER_FAST_MODEL:meta-llama/llama-3.3-70b-instruct}
-    power-model: ${OPENROUTER_POWER_MODEL:meta-llama/llama-3.3-70b-instruct}
+    fast-model: ${OPENROUTER_FAST_MODEL:nvidia/nemotron-3-super-120b-a12b:free}
+    power-model: ${OPENROUTER_POWER_MODEL:nvidia/nemotron-3-super-120b-a12b:free}
     base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
 
   gemini:
     api-key: ${GEMINI_API_KEY:}
+    # Verified model names as of 2025 — confirm at https://ai.google.dev/models
+    # gemini-1.5-flash — fast, cost-effective, supports function calling
+    # gemini-1.5-pro   — higher quality, larger context window
     fast-model: ${GEMINI_FAST_MODEL:gemini-1.5-flash}
     power-model: ${GEMINI_POWER_MODEL:gemini-1.5-pro}
+    # gemini-embedding-001 = 768-dim text embeddings
     embedding-model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     base-url: https://generativelanguage.googleapis.com/v1beta
 
+  # ---- Semantic discovery ----
   semantic:
-    similarity-threshold: 0.85
+    similarity-threshold: ${SEMANTIC_THRESHOLD:0.85}
 
-# CORS for local React dev server
+# ---- CORS ----
 cors:
   allowed-origins: ${CORS_ORIGIN:http://localhost:5173}
 
+# ---- Logging ----
 logging:
   level:
     com.docdebt: INFO

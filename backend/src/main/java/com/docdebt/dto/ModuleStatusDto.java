@@ -11,9 +11,12 @@ public record ModuleStatusDto(
         int volatilityScore,
         long unprocessedSummaries,
         long daysSinceLastUpdate,
-        String heatLevel, // "LOW" | "MEDIUM" | "HIGH"
+        String heatLevel,        // "LOW" | "MEDIUM" | "HIGH"
         boolean technicalScaffolded,
-        boolean businessScaffolded
+        boolean businessScaffolded,
+        String docStorageTarget, // "github" | "onedrive" | "sharepoint"
+        int prHealThreshold,     // heal after this many pending PRs
+        String repositoryFullName
 ) {
     public static ModuleStatusDto from(CodeModule module, long unprocessedCount, int threshold) {
         long days = ChronoUnit.DAYS.between(module.getLastDocUpdate(), LocalDateTime.now());
@@ -33,7 +36,10 @@ public record ModuleStatusDto(
                 days,
                 heat,
                 module.isTechnicalScaffolded(),
-                module.isBusinessScaffolded()
+                module.isBusinessScaffolded(),
+                module.getDocStorageTarget(),
+                module.getPrHealThreshold(),
+                module.getRepositoryFullName()
         );
     }
 }

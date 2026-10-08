@@ -8,7 +8,8 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "pr_summaries")
+@Table(name = "pr_summaries",
+        indexes = @Index(name = "idx_delivery_id", columnList = "deliveryId", unique = true))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,6 +26,13 @@ public class PrSummary {
     private String prNumber;
     private String prUrl;
     private String author;
+
+    /**
+     * GitHub's X-GitHub-Delivery header value — used to deduplicate
+     * webhook redeliveries so a retried delivery never creates a second summary.
+     */
+    @Column(unique = true)
+    private String deliveryId;
 
     // What changed, in engineering terms (endpoints, data model, dependencies...)
     @Column(columnDefinition = "TEXT")
@@ -48,5 +56,11 @@ public class PrSummary {
         this.author = author;
         this.technicalSummary = technicalSummary;
         this.businessSummary = businessSummary;
+    }
+
+    public PrSummary(CodeModule module, String prNumber, String prUrl, String author,
+                      String technicalSummary, String businessSummary, String deliveryId) {
+        this(module, prNumber, prUrl, author, technicalSummary, businessSummary);
+        this.deliveryId = deliveryId;
     }
 }
