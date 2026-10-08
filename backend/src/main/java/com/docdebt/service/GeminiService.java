@@ -1,5 +1,6 @@
 package com.docdebt.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,13 +16,16 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 /**
  * Wraps the Gemini generateContent + embedContent REST endpoints.
  * Docs: https://ai.google.dev/api/generate-content
  */
 @Service
 @Slf4j
-public class GeminiService {
+@ConditionalOnProperty(name = "docdebt.llm.provider", havingValue = "gemini")
+public class GeminiService implements LlmService {
 
 //
 //    private static final Logger log =
@@ -48,15 +52,14 @@ public class GeminiService {
         this.restTemplate = restTemplate;
     }
 
-    public record DualSummary(String technicalSummary, String businessSummary) {}
-
     /**
      * Map phase: from a single code diff, produce both:
      *  - a two-sentence engineering summary (endpoints, data model, deps, behavior)
      *  - a plain-language feature/use-case summary for a business audience,
      *    or an explicit "no user-facing impact" note for internal-only changes.
      */
-    public DualSummary summarizeDiff(String prTitle, String prBody, String diff) {
+    @Override
+    public LlmService.DualSummary summarizeDiff(String prTitle, String prBody, String diff) {
         String prompt = """
                 Analyze this merged pull request and return EXACTLY two labeled
                 sections, nothing else:
@@ -154,6 +157,11 @@ public class GeminiService {
         return generateContent(powerModel, prompt);
     }
 
+    /** Impact analysis: determine which modules are affected and what docs need updates */
+    public String analyzeImpact(String prompt) {
+        return generateContent(powerModel, prompt);
+    }
+
     /** Returns an embedding vector for the given text (used for semantic discovery). */
 //    public float[] embed(String text) {
 //        String url = "%s/models/%s:embedContent?key=%s".formatted(baseUrl, embeddingModel, apiKey);
@@ -202,8 +210,9 @@ public class GeminiService {
         );
 
         try {
-            JsonNode response =
-                    restTemplate.postForObject(url, entity, JsonNode.class);
+            String responseJson =
+                    restTemplate.postForObject(url, entity, String.class);
+            JsonNode response = mapper.readTree(responseJson);
 
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;
@@ -215,7 +224,7 @@ public class GeminiService {
                 log.error(
                         "Gemini embedding response contained no vector: elapsedMs={}, response={}",
                         elapsedMs,
-                        response
+                        responseJson
                 );
 
                 throw new IllegalStateException(
@@ -237,6 +246,9 @@ public class GeminiService {
 
             return vector;
 
+        } catch (JsonProcessingException ex) {
+            log.error("Failed to parse Gemini embedding response", ex);
+            throw new IllegalStateException("Failed to parse Gemini response", ex);
         } catch (Exception ex) {
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;
@@ -253,10 +265,10 @@ public class GeminiService {
         }
     }
 
-    private DualSummary parseDualSummary(String raw) {
+    private LlmService.DualSummary parseDualSummary(String raw) {
         String technical = extractSection(raw, "TECHNICAL:", "BUSINESS:");
         String business = extractSection(raw, "BUSINESS:", null);
-        return new DualSummary(
+        return new LlmService.DualSummary(
                 technical.isBlank() ? raw.trim() : technical,
                 business.isBlank() ? "No user-facing business impact." : business
         );
@@ -319,8 +331,9 @@ public class GeminiService {
         );
 
         try {
-            JsonNode response =
-                    restTemplate.postForObject(url, entity, JsonNode.class);
+            String responseJson =
+                    restTemplate.postForObject(url, entity, String.class);
+            JsonNode response = mapper.readTree(responseJson);
 
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;
@@ -341,7 +354,7 @@ public class GeminiService {
                         model,
                         elapsedMs,
                         candidates.isArray() && !candidates.isEmpty(),
-                        response
+                        responseJson
                 );
 
                 throw new IllegalStateException(
@@ -357,6 +370,9 @@ public class GeminiService {
 
             return generatedText;
 
+        } catch (JsonProcessingException ex) {
+            log.error("Failed to parse Gemini generation response", ex);
+            throw new IllegalStateException("Failed to parse Gemini response", ex);
         } catch (Exception ex) {
             long elapsedMs =
                     (System.nanoTime() - start) / 1_000_000;

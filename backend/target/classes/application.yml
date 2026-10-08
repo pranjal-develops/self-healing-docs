@@ -43,8 +43,9 @@ docdebt:
     api-base-url: https://api.github.com
 
   # Where technical/business docs are stored. "local" (default) needs zero
-  # setup - plain files on disk. Switch to "onedrive" once you're ready to
-  # deal with the Entra app registration (see README "Moving to OneDrive").
+  # setup - plain files on disk. Switch to "onedrive" for personal OneDrive,
+  # or "sharepoint" for enterprise SharePoint/OneDrive for Business.
+  # See README for setup instructions.
   storage:
     mode: ${DOC_STORAGE_MODE:local}
     local:
@@ -60,13 +61,32 @@ docdebt:
     token-store-path: ${ONEDRIVE_TOKEN_STORE_PATH:./data/onedrive-token.json}
     docs-root: ${ONEDRIVE_DOCS_ROOT:ArchitectureDocs}
 
+  # SharePoint/OneDrive for Business (enterprise) via application permissions.
+  # Only used when docdebt.storage.mode=sharepoint. Requires Azure AD app registration
+  # with Graph API permissions (Sites.ReadWrite.All). See README "SharePoint setup".
+  sharepoint:
+    tenant-id: ${SHAREPOINT_TENANT_ID:}
+    client-id: ${SHAREPOINT_CLIENT_ID:}
+    client-secret: ${SHAREPOINT_CLIENT_SECRET:}
+    site-id: ${SHAREPOINT_SITE_ID:}
+    drive-id: ${SHAREPOINT_DRIVE_ID:}
+    docs-root: ${SHAREPOINT_DOCS_ROOT:ArchitectureDocs}
+
+  llm:
+    provider: ${LLM_PROVIDER:openrouter}
+
+  openrouter:
+    api-key: ${OPENROUTER_API_KEY:}
+    fast-model: ${OPENROUTER_FAST_MODEL:meta-llama/llama-3.3-70b-instruct}
+    power-model: ${OPENROUTER_POWER_MODEL:meta-llama/llama-3.3-70b-instruct}
+    base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+
   gemini:
-    api-key: ${GEMINI_API_KEY}
-    fast-model: ${GEMINI_FAST_MODEL:gemini-3.5-flash-lite}
-    power-model: ${GEMINI_POWER_MODEL:gemini-3.8-flash}
+    api-key: ${GEMINI_API_KEY:}
+    fast-model: ${GEMINI_FAST_MODEL:gemini-1.5-flash}
+    power-model: ${GEMINI_POWER_MODEL:gemini-1.5-pro}
     embedding-model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     base-url: https://generativelanguage.googleapis.com/v1beta
-#    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
 
   semantic:
     similarity-threshold: 0.85
