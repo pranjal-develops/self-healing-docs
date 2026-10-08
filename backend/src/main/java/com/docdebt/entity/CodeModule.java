@@ -23,6 +23,9 @@ public class CodeModule {
     @Column(nullable = false, unique = true)
     private String name; // e.g. "PaymentService"
 
+    private String repositoryFullName; // e.g. "owner/repo" where webhook was triggered
+    private String targetBranch;       // e.g. "main" or "master"
+
     // --- Technical doc (HLD/LLD - architecture, endpoints, data model) ---
     private String technicalDocPath;   // e.g. "PaymentService-HLD.md"
     @Column(columnDefinition = "TEXT")

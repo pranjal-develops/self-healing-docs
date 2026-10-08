@@ -19,21 +19,21 @@ import java.util.stream.Collectors;
 public class SemanticDiscoveryService {
 
     private final ModuleRepository moduleRepository;
-    private final GeminiService geminiService;
+    private final LlmService llmService;
 
     @Value("${docdebt.semantic.similarity-threshold}")
     private double similarityThreshold;
 
-    public SemanticDiscoveryService(ModuleRepository moduleRepository, GeminiService geminiService) {
+    public SemanticDiscoveryService(ModuleRepository moduleRepository, LlmService llmService) {
         this.moduleRepository = moduleRepository;
-        this.geminiService = geminiService;
+        this.llmService = llmService;
     }
 
     public record MatchResult(Optional<CodeModule> match, double bestScore) {}
 
     /** Finds the best-matching existing module doc (of the given type) for the given text. */
     public MatchResult findBestMatch(DocType type, String aggregatedText) {
-        float[] queryVec = geminiService.embed(aggregatedText);
+        float[] queryVec = llmService.embed(aggregatedText);
 
         List<CodeModule> candidates = moduleRepository.findAll().stream()
                 .filter(m -> embeddingOf(m, type) != null && !embeddingOf(m, type).isBlank())
@@ -57,7 +57,7 @@ public class SemanticDiscoveryService {
     }
 
     public void storeEmbedding(DocType type, CodeModule module, String textToEmbed) {
-        float[] vec = geminiService.embed(textToEmbed);
+        float[] vec = llmService.embed(textToEmbed);
         String serialized = serializeEmbedding(vec);
         if (type == DocType.TECHNICAL) {
             module.setTechnicalEmbedding(serialized);

@@ -12,11 +12,11 @@ import java.util.stream.Collectors;
 @Service
 public class ImpactAnalysisService {
 
-    private final GeminiService geminiService;
+    private final LlmService llmService;
     private final ModuleRepository moduleRepository;
 
-    public ImpactAnalysisService(GeminiService geminiService, ModuleRepository moduleRepository) {
-        this.geminiService = geminiService;
+    public ImpactAnalysisService(LlmService llmService, ModuleRepository moduleRepository) {
+        this.llmService = llmService;
         this.moduleRepository = moduleRepository;
     }
 
@@ -38,7 +38,7 @@ public class ImpactAnalysisService {
                 .collect(Collectors.joining(", "));
 
         String prompt = buildImpactPrompt(prTitle, prBody, diff, modulesList);
-        String analysis = geminiService.analyzeImpact(prompt);
+        String analysis = llmService.analyzeImpact(prompt);
 
         return parseImpactResult(analysis, allModules);
     }
@@ -119,11 +119,21 @@ public class ImpactAnalysisService {
         }
         json = json.trim();
 
+        // If LLM includes code snippets in diff output containing braces, locate the target JSON object
+        int candidateStart = json.indexOf("{\n  \"affectedModules\"");
+        if (candidateStart == -1) candidateStart = json.indexOf("{\"affectedModules\"");
+        if (candidateStart == -1) candidateStart = json.indexOf('{');
+
+        int candidateEnd = json.lastIndexOf('}');
+        if (candidateStart != -1 && candidateEnd != -1 && candidateEnd > candidateStart) {
+            json = json.substring(candidateStart, candidateEnd + 1);
+        }
+
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         try {
             return mapper.readValue(json, Map.class);
         } catch (Exception e) {
-            throw new RuntimeException("JSON parsing failed", e);
+            throw new RuntimeException("JSON parsing failed for content: " + json, e);
         }
     }
 

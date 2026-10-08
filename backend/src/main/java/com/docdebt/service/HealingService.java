@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Implements the "Reduce" phase + Enterprise Bridge from the project plan -
  * run once per doc type (technical, business): gather unprocessed summaries
@@ -20,24 +22,28 @@ import java.util.stream.Collectors;
  * reset volatility once both docs are done.
  */
 @Service
+@Slf4j
 public class HealingService {
 
     private final PrSummaryRepository prSummaryRepository;
     private final ModuleRepository moduleRepository;
     private final DocStorageService docStorageService;
-    private final GeminiService geminiService;
+    private final LlmService llmService;
     private final SemanticDiscoveryService semanticDiscoveryService;
+    private final GitHubService gitHubService;
 
     public HealingService(PrSummaryRepository prSummaryRepository,
                            ModuleRepository moduleRepository,
                            DocStorageService docStorageService,
-                           GeminiService geminiService,
-                           SemanticDiscoveryService semanticDiscoveryService) {
+                           LlmService llmService,
+                           SemanticDiscoveryService semanticDiscoveryService,
+                           GitHubService gitHubService) {
         this.prSummaryRepository = prSummaryRepository;
         this.moduleRepository = moduleRepository;
         this.docStorageService = docStorageService;
-        this.geminiService = geminiService;
+        this.llmService = llmService;
         this.semanticDiscoveryService = semanticDiscoveryService;
+        this.gitHubService = gitHubService;
     }
 
     public HealResultDto heal(CodeModule module) {
@@ -73,45 +79,81 @@ public class HealingService {
 
     private DocHealResult healOne(CodeModule module, DocType type, String aggregated) {
         String path = type == DocType.TECHNICAL ? module.getTechnicalDocPath() : module.getBusinessDocPath();
+        String repoFullName = module.getRepositoryFullName();
+        String targetBranch = module.getTargetBranch();
 
         boolean wasScaffolded;
-        String oldContent;
+        String oldContent = null;
         String newContent;
 
-        if (path != null && !path.isBlank()) {
-            // Module already mapped to a known doc of this type - fetch & rewrite it.
+        // Try reading existing file from GitHub repository first if repo is known
+        if (repoFullName != null && !repoFullName.isBlank() && path != null && !path.isBlank()) {
+            GitHubService.GitHubFile ghFile = gitHubService.getFileContent(repoFullName, path, targetBranch);
+            if (ghFile != null) {
+                oldContent = ghFile.content();
+            }
+        }
+
+        // Fallback to local storage service if content wasn't loaded from GitHub
+        if (oldContent == null && path != null && !path.isBlank()) {
             oldContent = docStorageService.getDocumentContent(type, path);
-            wasScaffolded = (oldContent == null);
-            newContent = wasScaffolded
-                    ? scaffold(type, module.getName(), aggregated)
-                    : synthesize(type, oldContent, aggregated, module.getName());
+        }
+
+        if (oldContent != null) {
+            wasScaffolded = false;
+            newContent = synthesize(type, oldContent, aggregated, module.getName());
         } else {
-            // No mapping yet - run semantic discovery against other modules' docs of this type.
+            // No mapping/content yet - run semantic discovery against other modules' docs
             SemanticDiscoveryService.MatchResult match = semanticDiscoveryService.findBestMatch(type, aggregated);
             if (match.match().isPresent()) {
                 CodeModule matched = match.match().get();
                 String matchedPath = type == DocType.TECHNICAL ? matched.getTechnicalDocPath() : matched.getBusinessDocPath();
                 path = matchedPath;
-                oldContent = docStorageService.getDocumentContent(type, matchedPath);
-                newContent = synthesize(type, oldContent, aggregated, module.getName());
-                wasScaffolded = false;
+
+                if (repoFullName != null && !repoFullName.isBlank()) {
+                    GitHubService.GitHubFile ghFile = gitHubService.getFileContent(repoFullName, matchedPath, targetBranch);
+                    oldContent = ghFile != null ? ghFile.content() : null;
+                }
+                if (oldContent == null) {
+                    oldContent = docStorageService.getDocumentContent(type, matchedPath);
+                }
+
+                newContent = oldContent != null
+                        ? synthesize(type, oldContent, aggregated, module.getName())
+                        : scaffold(type, module.getName(), aggregated);
+                wasScaffolded = (oldContent == null);
             } else {
                 // Auto-Scaffolding pipeline: brand new doc from template.
                 oldContent = "";
                 newContent = scaffold(type, module.getName(), aggregated);
-                path = module.getName() + (type == DocType.TECHNICAL ? "-HLD.md" : "-Business.md");
+                String cleanModuleName = module.getName().replaceAll("\\.[^/.]+$", "");
+                path = "docs/" + (type == DocType.TECHNICAL ? "Technical/" : "Business/") + cleanModuleName + (type == DocType.TECHNICAL ? "-HLD.md" : "-Business.md");
                 wasScaffolded = true;
             }
             applyPath(module, type, path, wasScaffolded);
         }
 
-        String fileName = path != null ? path : module.getName() + (type == DocType.TECHNICAL ? "-HLD.md" : "-Business.md");
+        String cleanModuleName = module.getName().replaceAll("\\.[^/.]+$", "");
+        String fileName = path != null ? path : "docs/" + (type == DocType.TECHNICAL ? "Technical/" : "Business/") + cleanModuleName + (type == DocType.TECHNICAL ? "-HLD.md" : "-Business.md");
         String draftPath = docStorageService.pushDraft(type, fileName, newContent);
+
+        // Push directly to target GitHub Repository if configured
+        if (repoFullName != null && !repoFullName.isBlank()) {
+            try {
+                String commitMessage = "[Doc-Debt Tracker] Auto-healed %s documentation for %s"
+                        .formatted(type.name().toLowerCase(), module.getName());
+                String githubUrl = gitHubService.createOrUpdateFile(repoFullName, fileName, newContent, commitMessage, targetBranch);
+                draftPath = githubUrl;
+                log.info("Successfully pushed updated doc to GitHub: {}", githubUrl);
+            } catch (Exception e) {
+                log.error("Failed to commit doc update to GitHub repo {}: {}", repoFullName, e.getMessage(), e);
+            }
+        }
 
         // Index this module's embedding so future modules can be semantically matched to it.
         semanticDiscoveryService.storeEmbedding(type, module, newContent);
 
-        return new DocHealResult(oldContent, newContent, draftPath, wasScaffolded);
+        return new DocHealResult(oldContent != null ? oldContent : "", newContent, draftPath, wasScaffolded);
     }
 
     private void applyPath(CodeModule module, DocType type, String path, boolean scaffolded) {
@@ -126,13 +168,13 @@ public class HealingService {
 
     private String synthesize(DocType type, String existingDoc, String aggregated, String moduleName) {
         return type == DocType.TECHNICAL
-                ? geminiService.synthesizeTechnicalDocUpdate(existingDoc, aggregated, moduleName)
-                : geminiService.synthesizeBusinessDocUpdate(existingDoc, aggregated, moduleName);
+                ? llmService.synthesizeTechnicalDocUpdate(existingDoc, aggregated, moduleName)
+                : llmService.synthesizeBusinessDocUpdate(existingDoc, aggregated, moduleName);
     }
 
     private String scaffold(DocType type, String moduleName, String aggregated) {
         return type == DocType.TECHNICAL
-                ? geminiService.scaffoldNewTechnicalDoc(moduleName, aggregated)
-                : geminiService.scaffoldNewBusinessDoc(moduleName, aggregated);
+                ? llmService.scaffoldNewTechnicalDoc(moduleName, aggregated)
+                : llmService.scaffoldNewBusinessDoc(moduleName, aggregated);
     }
 }

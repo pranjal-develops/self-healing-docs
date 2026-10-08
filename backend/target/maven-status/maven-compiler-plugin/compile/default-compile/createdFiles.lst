@@ -5,8 +5,8 @@ com\docdebt\dto\ModuleStatusDto.class
 com\docdebt\service\HealingService.class
 com\docdebt\service\LocalDocService.class
 com\docdebt\entity\CodeModule.class
+com\docdebt\service\GitHubService$GitHubFile.class
 com\docdebt\controller\DashboardController$ErrorResponse.class
-com\docdebt\controller\GitHubWebhookController.class
 com\docdebt\entity\PrSummary.class
 com\docdebt\DocDebtApplication.class
 com\docdebt\service\ImpactAnalysisService$ImpactResult.class
@@ -19,7 +19,6 @@ com\docdebt\config\AppConfig.class
 com\docdebt\service\OneDriveTokenStore.class
 com\docdebt\service\DocStorageService.class
 com\docdebt\dto\HealResultDto.class
-com\docdebt\service\GeminiService$DualSummary.class
 com\docdebt\service\SemanticDiscoveryService$MatchResult.class
 com\docdebt\service\DocType.class
 com\docdebt\repository\PrSummaryRepository.class

@@ -72,15 +72,21 @@ docdebt:
     drive-id: ${SHAREPOINT_DRIVE_ID:}
     docs-root: ${SHAREPOINT_DOCS_ROOT:ArchitectureDocs}
 
+  llm:
+    provider: ${LLM_PROVIDER:openrouter}
+
+  openrouter:
+    api-key: ${OPENROUTER_API_KEY:}
+    fast-model: ${OPENROUTER_FAST_MODEL:meta-llama/llama-3.3-70b-instruct}
+    power-model: ${OPENROUTER_POWER_MODEL:meta-llama/llama-3.3-70b-instruct}
+    base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+
   gemini:
-    api-key: ${GEMINI_API_KEY}
-    fast-model: ${GEMINI_FAST_MODEL:gemini-3.6-flash}
-    power-model: ${GEMINI_POWER_MODEL:gemini-3.6-flash}
-#    fast-model: ${GEMINI_FAST_MODEL:gemini-3.5-flash-lite}
-#    power-model: ${GEMINI_POWER_MODEL:gemini-3.8-flash}
+    api-key: ${GEMINI_API_KEY:}
+    fast-model: ${GEMINI_FAST_MODEL:gemini-1.5-flash}
+    power-model: ${GEMINI_POWER_MODEL:gemini-1.5-pro}
     embedding-model: ${GEMINI_EMBEDDING_MODEL:gemini-embedding-001}
     base-url: https://generativelanguage.googleapis.com/v1beta
-#    embedding-model: ${GEMINI_EMBEDDING_MODEL:text-embedding-004}
 
   semantic:
     similarity-threshold: 0.85

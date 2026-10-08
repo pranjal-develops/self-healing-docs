@@ -16,13 +16,16 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 /**
  * Wraps the Gemini generateContent + embedContent REST endpoints.
  * Docs: https://ai.google.dev/api/generate-content
  */
 @Service
 @Slf4j
-public class GeminiService {
+@ConditionalOnProperty(name = "docdebt.llm.provider", havingValue = "gemini")
+public class GeminiService implements LlmService {
 
 //
 //    private static final Logger log =
@@ -49,15 +52,14 @@ public class GeminiService {
         this.restTemplate = restTemplate;
     }
 
-    public record DualSummary(String technicalSummary, String businessSummary) {}
-
     /**
      * Map phase: from a single code diff, produce both:
      *  - a two-sentence engineering summary (endpoints, data model, deps, behavior)
      *  - a plain-language feature/use-case summary for a business audience,
      *    or an explicit "no user-facing impact" note for internal-only changes.
      */
-    public DualSummary summarizeDiff(String prTitle, String prBody, String diff) {
+    @Override
+    public LlmService.DualSummary summarizeDiff(String prTitle, String prBody, String diff) {
         String prompt = """
                 Analyze this merged pull request and return EXACTLY two labeled
                 sections, nothing else:
@@ -263,10 +265,10 @@ public class GeminiService {
         }
     }
 
-    private DualSummary parseDualSummary(String raw) {
+    private LlmService.DualSummary parseDualSummary(String raw) {
         String technical = extractSection(raw, "TECHNICAL:", "BUSINESS:");
         String business = extractSection(raw, "BUSINESS:", null);
-        return new DualSummary(
+        return new LlmService.DualSummary(
                 technical.isBlank() ? raw.trim() : technical,
                 business.isBlank() ? "No user-facing business impact." : business
         );
