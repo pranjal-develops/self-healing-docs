@@ -74,66 +74,102 @@ public interface LlmService {
 
     static String buildSynthesizeTechnicalPrompt(String moduleName, String existingDoc, String aggregatedSummaries) {
         return """
-                You are updating the High-Level/Low-Level Design document for the
-                module "%s". Rewrite the architectural sections of the document
-                below to incorporate the historical engineering changes described
-                in the change log, while preserving sections that are still
-                accurate. Keep the existing structure/headings where possible.
-                Output only the full updated document in Markdown, nothing else.
+                You are a Senior Software Architect updating the technical design document (HLD/LLD) for the module "%s".
 
-                === EXISTING DOCUMENT ===
+                INSTRUCTIONS:
+                1. Rewrite the architectural sections to incorporate all new engineering changes, modified APIs, updated data models, and component additions described in the change log.
+                2. Preserve existing document structure, accurate sections, and established technical details.
+                3. STRICT ANTI-HALLUCINATION RULE: Do NOT invent or hallucinate non-existent files, class names, API endpoints, or data models that are not present in the provided context, existing doc, or diffs. If details are missing, write "N/A — Not specified in repository context" rather than making up fictitious classes or files.
+                4. Output ONLY the complete updated Markdown document, nothing else.
+
+                === EXISTING TECHNICAL DESIGN DOCUMENT ===
                 %s
 
-                === ENGINEERING CHANGE LOG ===
+                === RECENT ENGINEERING CHANGES & CODE DIFFERENCES ===
                 %s
                 """.formatted(sanitize(moduleName), existingDoc, aggregatedSummaries);
     }
 
     static String buildSynthesizeBusinessPrompt(String moduleName, String existingDoc, String aggregatedSummaries) {
         return """
-                You are updating the business/feature documentation for the module
-                "%s". Rewrite the Features and Use Cases sections of the document
-                below to incorporate the feature/use-case changes described in the
-                change log, while preserving sections that are still accurate.
-                Write for a non-technical stakeholder - no implementation detail,
-                no code, no endpoint names. If a change log entry has no
-                user-facing impact, do not add it as a feature. Keep the existing
-                structure/headings where possible. Output only the full updated
-                document in Markdown, nothing else.
+                You are updating the business and product documentation for the module "%s".
 
-                === EXISTING DOCUMENT ===
+                INSTRUCTIONS:
+                1. Rewrite the Features, Workflows, and User Impact sections to incorporate feature/use-case changes described in the change log.
+                2. Write for a non-technical stakeholder (product manager / business executive) — explain what the software does, key business rules, and user impact without implementation code.
+                3. STRICT ANTI-HALLUCINATION RULE: Focus strictly on actual features and user impact described in the provided context. Do NOT invent non-existent features or module capabilities.
+                4. Preserve existing accurate feature descriptions and headings where possible.
+                5. Output ONLY the complete updated Markdown document, nothing else.
+
+                === EXISTING BUSINESS DOCUMENT ===
                 %s
 
-                === FEATURE/USE-CASE CHANGE LOG ===
+                === FEATURE & USE-CASE CHANGE LOG ===
                 %s
                 """.formatted(sanitize(moduleName), existingDoc, aggregatedSummaries);
     }
 
     static String buildScaffoldTechnicalPrompt(String moduleName, String aggregatedSummaries) {
         return """
-                Generate a brand-new architectural design document for a module
-                called "%s", based only on the change log below. Use this template
-                with these exact headings: Overview, System Architecture, Endpoints,
-                Data Model, Dependencies. Output only the Markdown document.
+                You are a Principal Software Architect writing a production-grade High-Level/Low-Level Design (HLD/LLD) document for the software module "%s".
 
-                === ENGINEERING CHANGE LOG ===
+                CRITICAL REQUIREMENTS:
+                1. STRICT ANTI-HALLUCINATION RULE: Do NOT invent or hallucinate non-existent file names, class names, API endpoints, or data models that are not explicitly present in the provided codebase context or README. If specific details (e.g. database schemas or specific API endpoints) are not present in the context, write "N/A — Not specified in repository context" under that section instead of inventing fictitious examples (such as PaymentController, OrderService, etc.).
+                2. Base your design document strictly on the actual code context, build files, and engineering changes provided below.
+                3. Format cleanly using GitHub-flavored Markdown.
+                4. Output ONLY the Markdown document, nothing else.
+
+                Include these exact section headings:
+                # Technical Design Document: %s
+
+                ## 1. Executive Summary & Core Responsibilities
+                High-level architecture, module scope, and primary technical capabilities.
+
+                ## 2. Component Architecture & System Flow
+                Key service classes, controllers, schedulers, and how data moves through the module.
+
+                ## 3. API Contracts & Endpoint Specifications
+                List HTTP methods, path routes, request headers, parameters, payload schemas, and response formats.
+
+                ## 4. Data Model, Database Schema & Entities
+                Document entities, database tables, column names, data types, index constraints, and relationships.
+
+                ## 5. Integrations & External Dependencies
+                List third-party APIs, libraries, databases, and external service contracts used by this module.
+
+                === CODEBASE CONTEXT & ENGINEERING CHANGE LOG ===
                 %s
-                """.formatted(sanitize(moduleName), aggregatedSummaries);
+                """.formatted(sanitize(moduleName), sanitize(moduleName), aggregatedSummaries);
     }
 
     static String buildScaffoldBusinessPrompt(String moduleName, String aggregatedSummaries) {
         return """
-                Generate a brand-new business/feature document for a module called
-                "%s", based only on the change log below. Use this template with
-                these exact headings: Overview, Key Features, Use Cases,
-                Stakeholders, Business Value. Write for a non-technical audience -
-                no implementation detail. If the change log is entirely internal
-                changes with no user-facing impact, say so plainly under Overview
-                instead of inventing features. Output only the Markdown document.
+                You are a Product Manager writing a comprehensive business and feature specification document for the module "%s".
 
-                === FEATURE/USE-CASE CHANGE LOG ===
+                CRITICAL REQUIREMENTS:
+                1. Write for non-technical stakeholders (Product Managers, Executives, Support teams).
+                2. STRICT ANTI-HALLUCINATION RULE: Focus strictly on actual product features and business capabilities described in the provided context. Do NOT invent non-existent features, workflows, or files not present in the codebase context.
+                3. Do NOT include code snippets or internal implementation details.
+                4. Output ONLY the Markdown document, nothing else.
+
+                Include these exact section headings:
+                # Business Feature Specification: %s
+
+                ## 1. Executive Summary
+                High-level business purpose and value proposition of the module.
+
+                ## 2. Key Business Features & Capabilities
+                Detailed breakdown of user-facing capabilities and business functionality.
+
+                ## 3. Workflow & Business Rules
+                Step-by-step user/business workflows and domain constraints.
+
+                ## 4. Target Stakeholders & Value Delivered
+                Who benefits from this module (End-Users, Developers, Admins) and key business outcomes.
+
+                === FEATURE & USE-CASE CONTEXT ===
                 %s
-                """.formatted(sanitize(moduleName), aggregatedSummaries);
+                """.formatted(sanitize(moduleName), sanitize(moduleName), aggregatedSummaries);
     }
 
     /**

@@ -11,6 +11,9 @@ public interface PrSummaryRepository extends JpaRepository<PrSummary, Long> {
     List<PrSummary> findByModuleAndProcessedFalse(CodeModule module);
     long countByModuleAndProcessedFalse(CodeModule module);
 
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByModule(CodeModule module);
+
     /** Used for deduplication – check if a delivery was already processed. */
     Optional<PrSummary> findByDeliveryId(String deliveryId);
     boolean existsByDeliveryId(String deliveryId);

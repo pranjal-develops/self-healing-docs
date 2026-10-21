@@ -12,8 +12,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 /**
  * Core application configuration.
  *
- * @EnableAsync   — enables @Async on webhook processing so GitHub's 10 s
- *                  delivery timeout is never hit.
+ * @EnableAsync — enables @Async on webhook processing so GitHub's 10 s
+ *              delivery timeout is never hit.
  * @EnableScheduling — enables @Scheduled on DebtEvaluatorJob.
  */
 @Configuration
@@ -33,7 +33,7 @@ public class AppConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOrigins(allowedOrigins)
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("X-API-Key");
     }

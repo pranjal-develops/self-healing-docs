@@ -148,7 +148,7 @@ public class GitHubWebhookController {
             String diff = safeFetchDiff(repoFull, prNumber);
 
             // Resolve to one or more modules (a single PR can touch multiple modules)
-            Map<String, List<String>> moduleToFiles = moduleResolver.resolveModules(diff);
+            Map<String, List<String>> moduleToFiles = moduleResolver.resolveModules(diff, repoFull);
 
             for (Map.Entry<String, List<String>> entry : moduleToFiles.entrySet()) {
                 String moduleName = entry.getKey();

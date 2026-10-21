@@ -47,7 +47,7 @@ abstract class AbstractLlmService implements LlmService {
 
     @Override
     public DualSummary summarizeDiff(String prTitle, String prBody, String diff) {
-        String budgeted = LlmService.budgetDiff(diff, 12_000);
+        String budgeted = LlmService.budgetDiff(diff, 4_000);
         String prompt = LlmService.buildSummarizeDiffPrompt(prTitle, prBody, budgeted);
         String raw = generateWithRetry(getFastModel(), prompt);
         return parseDualSummary(raw);

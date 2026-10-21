@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface ModuleRepository extends JpaRepository<CodeModule, Long> {
     Optional<CodeModule> findByName(String name);
+    java.util.List<CodeModule> findByRepositoryFullName(String repositoryFullName);
 }

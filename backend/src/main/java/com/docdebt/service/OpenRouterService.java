@@ -57,7 +57,8 @@ public class OpenRouterService extends AbstractLlmService {
 
     @PostConstruct
     void logConfiguration() {
-        log.info("OpenRouter provider active: baseUrl={}, fastModel={}, powerModel={}, apiKeyConfigured={}, geminiEmbeddings={}",
+        log.info(
+                "OpenRouter provider active: baseUrl={}, fastModel={}, powerModel={}, apiKeyConfigured={}, geminiEmbeddings={}",
                 baseUrl, fastModel, powerModel,
                 apiKey != null && !apiKey.isBlank(),
                 geminiApiKey != null && !geminiApiKey.isBlank());
@@ -66,10 +67,14 @@ public class OpenRouterService extends AbstractLlmService {
     // ---- AbstractLlmService hooks ----------------------------------------
 
     @Override
-    protected String getFastModel() { return fastModel; }
+    protected String getFastModel() {
+        return fastModel;
+    }
 
     @Override
-    protected String getPowerModel() { return powerModel; }
+    protected String getPowerModel() {
+        return powerModel;
+    }
 
     @Override
     protected String doGenerate(String model, String prompt) {
@@ -116,7 +121,8 @@ public class OpenRouterService extends AbstractLlmService {
             }
 
             if (text.isBlank() || "null".equals(text)) {
-                log.error("OpenRouter returned no text: model={}, elapsedMs={}, response={}", model, elapsedMs, responseJson);
+                log.error("OpenRouter returned no text: model={}, elapsedMs={}, response={}", model, elapsedMs,
+                        responseJson);
                 throw new IllegalStateException("OpenRouter returned an empty response for model=" + model);
             }
 
@@ -126,7 +132,8 @@ public class OpenRouterService extends AbstractLlmService {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Failed to parse OpenRouter response", ex);
         }
-        // HTTP 429 and 5xx propagate as Spring HttpStatusCodeException → caught by AbstractLlmService.generateWithRetry
+        // HTTP 429 and 5xx propagate as Spring HttpStatusCodeException → caught by
+        // AbstractLlmService.generateWithRetry
     }
 
     // ---- Embeddings (delegated to Gemini) ----------------------------------

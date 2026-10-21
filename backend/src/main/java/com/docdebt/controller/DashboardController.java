@@ -169,6 +169,24 @@ public class DashboardController {
                 module, prSummaryRepository.countByModuleAndProcessedFalse(module), threshold));
     }
 
+    /** Deletes a module and its associated PR summaries. */
+    @DeleteMapping("/modules/{id}")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> deleteModule(
+            @RequestHeader(value = "X-API-Key", required = false) String key,
+            @PathVariable Long id) {
+        var auth = checkAuth(key);
+        if (auth != null) return auth;
+
+        CodeModule module = moduleRepository.findById(id).orElse(null);
+        if (module == null) return ResponseEntity.notFound().build();
+
+        prSummaryRepository.deleteByModule(module);
+        moduleRepository.delete(module);
+
+        return ResponseEntity.ok(java.util.Map.of("message", "Module deleted successfully", "id", id));
+    }
+
     /** Heal Now button: manually fires the Map-Reduce healing pipeline. */
     @PostMapping("/modules/{id}/heal")
     public ResponseEntity<?> healNow(

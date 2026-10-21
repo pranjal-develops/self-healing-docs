@@ -66,9 +66,14 @@ public class HealingService {
      * @throws IllegalStateException if there are no pending PR summaries to heal from.
      */
     public HealResultDto heal(CodeModule module) {
+        long startTime = System.currentTimeMillis();
         List<PrSummary> unprocessed = prSummaryRepository.findByModuleAndProcessedFalse(module);
 
+        log.info("[Doc-Debt] Starting heal pipeline for module '{}' — Found {} pending PR summary(ies)",
+                module.getName(), unprocessed.size());
+
         if (unprocessed.isEmpty()) {
+            log.warn("[Doc-Debt] Module '{}' has 0 pending PR summaries — aborting heal", module.getName());
             throw new IllegalStateException(
                     "Module '%s' has no pending PR summaries — nothing to heal from. ".formatted(module.getName()) +
                     "Merge a real PR that touches this module, or use the Time Travel button to simulate one first."
@@ -83,7 +88,10 @@ public class HealingService {
                 .map(s -> "- [PR #%s by %s] %s".formatted(s.getPrNumber(), s.getAuthor(), s.getBusinessSummary()))
                 .collect(Collectors.joining("\n"));
 
+        log.info("[Doc-Debt] [1/2] Synthesizing Technical Design Document for module '{}'...", module.getName());
         DocHealResult technicalResult = healOne(module, DocType.TECHNICAL, aggregatedTechnical);
+
+        log.info("[Doc-Debt] [2/2] Synthesizing Business Feature Specification for module '{}'...", module.getName());
         DocHealResult businessResult  = healOne(module, DocType.BUSINESS,  aggregatedBusiness);
 
         // Mark processed and reset volatility AFTER both docs are published.
@@ -93,6 +101,10 @@ public class HealingService {
         module.setVolatilityScore(0);
         moduleRepository.save(module);
 
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("[Doc-Debt] Successfully healed module '{}' from {} PRs in {} ms (Storage target: {})",
+                module.getName(), unprocessed.size(), elapsed, module.getDocStorageTarget());
+
         return new HealResultDto(module.getName(), technicalResult, businessResult, unprocessed.size());
     }
 
@@ -101,9 +113,44 @@ public class HealingService {
      * Immediately scaffolds initial Technical and Business docs from scratch if no docs exist.
      */
     public HealResultDto scaffoldInitialDocs(CodeModule module, String initialSummary) {
-        String summaryText = (initialSummary != null && !initialSummary.isBlank())
-                ? initialSummary
-                : "Initial repository onboarding for module: " + module.getName();
+        StringBuilder context = new StringBuilder();
+        context.append("Initial repository onboarding for module: ").append(module.getName()).append("\n");
+        if (initialSummary != null && !initialSummary.isBlank()) {
+            context.append("Repository Overview: ").append(initialSummary).append("\n");
+        }
+
+        // Fetch real repository context (README, build configurations) if available
+        if (module.getRepositoryFullName() != null && !module.getRepositoryFullName().isBlank()) {
+            try {
+                GitHubService.GitHubFile readme = gitHubService.getFileContent(
+                        module.getRepositoryFullName(), "README.md", module.getTargetBranch());
+                if (readme != null && readme.content() != null) {
+                    String content = readme.content();
+                    if (content.length() > 1500) content = content.substring(0, 1500) + "\n... [truncated]";
+                    context.append("\n=== REPOSITORY README ===\n").append(content).append("\n");
+                }
+
+                GitHubService.GitHubFile pom = gitHubService.getFileContent(
+                        module.getRepositoryFullName(), "pom.xml", module.getTargetBranch());
+                if (pom != null && pom.content() != null) {
+                    String content = pom.content();
+                    if (content.length() > 1000) content = content.substring(0, 1000) + "\n... [truncated]";
+                    context.append("\n=== BUILD DEPENDENCIES (pom.xml) ===\n").append(content).append("\n");
+                } else {
+                    GitHubService.GitHubFile pkg = gitHubService.getFileContent(
+                            module.getRepositoryFullName(), "package.json", module.getTargetBranch());
+                    if (pkg != null && pkg.content() != null) {
+                        String content = pkg.content();
+                        if (content.length() > 1000) content = content.substring(0, 1000) + "\n... [truncated]";
+                        context.append("\n=== BUILD DEPENDENCIES (package.json) ===\n").append(content).append("\n");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not fetch repo files for initial scaffolding context: {}", e.getMessage());
+            }
+        }
+
+        String summaryText = context.toString();
 
         DocHealResult technicalResult = healOne(module, DocType.TECHNICAL, summaryText);
         DocHealResult businessResult  = healOne(module, DocType.BUSINESS,  summaryText);
